@@ -87,6 +87,7 @@ private:
 	std::string opened_log_setting;
 	std::string diskdefs_path_problem;
 	std::string log_path_problem;
+	std::string image_format_problem;
 
 	constexpr static const char* inifilename = "\\cpmdiskimg.ini";
 	// Relative on purpose: a newly created INI must stay valid when a portable

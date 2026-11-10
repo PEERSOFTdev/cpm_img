@@ -143,6 +143,10 @@ void plugin_config_t::set_default_diskdefs_path()
         plugin_path.data(),
         diskdefs_file_path,
         diskdefs_path_problem);
+    // cpmtools reads this global; set it wherever the path is resolved, as a
+    // read_conf() that fails early would otherwise leave it NULL, and
+    // fopen(NULL) crashes TCmd.
+    diskdefs_path = diskdefs_file_path.data();
 }
 
 // Also kept in `problem`, because the log may be off or be the broken part,
@@ -187,6 +191,16 @@ std::string plugin_config_t::describe_path_problems(bool* cannot_mount) const
         text += "Logging is off because the log file cannot be opened.\n";
         text += "log_file_path=" + log_file_setting + "\n";
         text += log_path_problem + "\n";
+    }
+
+    if (!image_format_problem.empty()) {
+        if (!text.empty())
+            text += "\n";
+        text += "The image_format setting was ignored.\n";
+        text += image_format_problem + "\n";
+        text += "The format ";
+        text += image_format.data();
+        text += " is used instead.\n";
     }
 
     if (!text.empty()) {
@@ -288,6 +302,9 @@ bool plugin_config_t::read_conf(const PackDefaultParamStruct* dps, bool reread)
         return false; // Use default configuration
     }
 
+    // A failed earlier read can leave options behind; they would then count
+    // as duplicates and make every later read fail.
+    options_map = options_map_t{};
     auto res = file_to_options_map(cf);
     if (res) {
         std::fclose(cf);
@@ -328,11 +345,27 @@ bool plugin_config_t::read_conf(const PackDefaultParamStruct* dps, bool reread)
         diskdefs_file_setting = get_option_from_map<std::string>("diskdefs_file_path"s);
 		set_default_diskdefs_path();
 
-		diskdefs_path = diskdefs_file_path.data(); 
-
-        image_format.clear();
-        auto tf = get_option_from_map<std::string>("image_format"s);
-        image_format.push_back( tf.c_str() );
+        // Optional like the options below: a missing line keeps the current
+        // format instead of invalidating the whole INI, and an over-long name
+        // is reported and ignored instead of overflowing the fixed buffer.
+        image_format_problem.clear();
+        try {
+            auto tf = get_option_from_map<std::string>("image_format"s);
+            if (tf.size() > image_format.capacity()) {
+                report_config_problem(
+                    "image_format: longer than " +
+                        std::to_string(image_format.capacity()) +
+                        " characters, ignored: " + tf,
+                    image_format_problem);
+            }
+            else {
+                image_format.clear();
+                image_format.push_back(tf.c_str());
+            }
+        }
+        catch (const std::exception&) { //-V565
+            // Keep the current format.
+        }
 
         // Optional in older configuration files.
         try {

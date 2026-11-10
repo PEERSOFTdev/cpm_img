@@ -456,6 +456,12 @@ private:
 		// attempt must start from a fully discarded superblock and a newly
 		// opened LibDsk device.
 		auto mount_with_format = [&](const char* format) -> int {
+			// cpmReadSuper() dereferences the name, so a missing format would
+			// crash TCmd; treat it as a failed mount and let the user choose.
+			if (!format || !*format) {
+				boo = "no image format configured";
+				return -1;
+			}
 			cpmDiscardSuper(&super);
 			root = {};
 
